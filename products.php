@@ -2,6 +2,7 @@
 
 require_once __DIR__ . "/config/database.php";
 require_once __DIR__ . "/models/Produit.php";
+require_once __DIR__ . "/models/Categorie.php";
 
 $pageTitle = "Nos produits";
 
@@ -12,8 +13,22 @@ $database = new Database();
 $db = $database->getConnection();
 
 $produitModel = new Produit($db);
+$categorieModel = new Categorie($db);
 
-$produits = $produitModel->getAll();
+$idCategorie = filter_input(
+    INPUT_GET,
+    'id_categorie',
+    FILTER_VALIDATE_INT
+);
+
+$categorieFiltre = null;
+
+if ($idCategorie) {
+    $categorieFiltre = $categorieModel->getById($idCategorie);
+    $produits = $produitModel->getByCategory($idCategorie);
+} else {
+    $produits = $produitModel->getAll();
+}
 
 require_once __DIR__ . "/includes/header.php";
 
@@ -26,11 +41,17 @@ require_once __DIR__ . "/includes/header.php";
         <div>
 
             <h1 class="fw-bold">
-                Nos produits
+                <?= $categorieFiltre
+                    ? htmlspecialchars($categorieFiltre['nom'])
+                    : 'Nos produits'
+                ?>
             </h1>
 
             <p class="text-muted mb-0">
-                Découvrez notre catalogue.
+                <?= $categorieFiltre
+                    ? 'Produits de cette catégorie.'
+                    : 'Découvrez notre catalogue.'
+                ?>
             </p>
 
         </div>

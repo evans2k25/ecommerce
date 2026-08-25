@@ -98,4 +98,85 @@ class Commande
 
         return (int) $this->db->lastInsertId();
     }
+
+    public function getAll(): array
+    {
+        $sql = "
+            SELECT
+                c.id_commande,
+                c.numero_commande,
+                c.reference,
+                c.montant_total,
+                c.statut,
+                c.date_commande,
+                cl.nom,
+                cl.prenom,
+                cl.email,
+                cl.telephone
+            FROM commandes c
+            INNER JOIN clients cl
+                ON cl.id_client = c.id_client
+            ORDER BY c.date_commande DESC
+        ";
+
+        return $this->db->query($sql)->fetchAll();
+    }
+
+    public function getById(int $id): ?array
+    {
+        $sql = "
+            SELECT
+                c.id_commande,
+                c.id_client,
+                c.numero_commande,
+                c.reference,
+                c.montant_total,
+                c.statut,
+                c.date_commande,
+                cl.nom,
+                cl.prenom,
+                cl.email,
+                cl.telephone
+            FROM commandes c
+            INNER JOIN clients cl
+                ON cl.id_client = c.id_client
+            WHERE c.id_commande = :id
+            LIMIT 1
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['id' => $id]);
+        $commande = $stmt->fetch();
+
+        return $commande ?: null;
+    }
+
+    public function updateStatus(int $id, string $statut): bool
+    {
+        $statuts = [
+            'en_attente',
+            'confirmee',
+            'preparee',
+            'expediee',
+            'livree',
+            'annulee'
+        ];
+
+        if (!in_array($statut, $statuts, true)) {
+            return false;
+        }
+
+        $sql = "
+            UPDATE commandes
+            SET statut = :statut
+            WHERE id_commande = :id
+        ";
+
+        $stmt = $this->db->prepare($sql);
+
+        return $stmt->execute([
+            'statut' => $statut,
+            'id' => $id
+        ]);
+    }
 }

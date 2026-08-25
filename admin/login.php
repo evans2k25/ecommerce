@@ -55,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['admin'] = [
 
                 'id' =>
-                    $admin['id_administrateur'],
+                    $admin['id_admin'],
 
                 'nom' =>
                     $admin['nom'],
@@ -64,7 +64,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $admin['prenom'],
 
                 'email' =>
-                    $admin['email']
+                    $admin['email'],
+
+                'role' =>
+                    $admin['role'] ?? 'admin'
             ];
 
 

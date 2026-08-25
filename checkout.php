@@ -349,8 +349,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         !in_array(
             $modePaiement,
             [
-                'livraison',
-                'mobile_money'
+                'especes',
+                'wave',
+                'orange_money'
             ],
             true
         )
@@ -858,21 +859,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $errors[] =
                 "Impossible de créer la commande : " .
                 $e->getMessage();
-
-
-            /*
-            |--------------------------------------------------------------------------
-            | Informations de débogage
-            |--------------------------------------------------------------------------
-            */
-
-            $errors[] =
-                "Fichier : " .
-                $e->getFile();
-
-            $errors[] =
-                "Ligne : " .
-                $e->getLine();
         }
     }
 }
@@ -1118,12 +1104,26 @@ require_once __DIR__ . "/includes/header.php";
 
                         <div class="form-check mb-2">
 
-                            <input type="radio" name="mode_paiement" id="livraison" value="livraison"
-                                class="form-check-input" checked>
+                            <input type="radio" name="mode_paiement" id="especes" value="especes"
+                                class="form-check-input" <?= ($modePaiement === '' || $modePaiement === 'especes') ? 'checked' : '' ?>>
 
-                            <label class="form-check-label" for="livraison">
+                            <label class="form-check-label" for="especes">
 
-                                Paiement à la livraison
+                                Espèces à la livraison
+
+                            </label>
+
+                        </div>
+
+
+                        <div class="form-check mb-2">
+
+                            <input type="radio" name="mode_paiement" id="wave" value="wave"
+                                class="form-check-input" <?= $modePaiement === 'wave' ? 'checked' : '' ?>>
+
+                            <label class="form-check-label" for="wave">
+
+                                Wave
 
                             </label>
 
@@ -1132,12 +1132,12 @@ require_once __DIR__ . "/includes/header.php";
 
                         <div class="form-check">
 
-                            <input type="radio" name="mode_paiement" id="mobile_money" value="mobile_money"
-                                class="form-check-input">
+                            <input type="radio" name="mode_paiement" id="orange_money" value="orange_money"
+                                class="form-check-input" <?= $modePaiement === 'orange_money' ? 'checked' : '' ?>>
 
-                            <label class="form-check-label" for="mobile_money">
+                            <label class="form-check-label" for="orange_money">
 
-                                Mobile Money
+                                Orange Money
 
                             </label>
 

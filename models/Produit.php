@@ -175,6 +175,35 @@ class Produit
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
+public function update(int $id, array $data): bool
+{
+    $sql = "
+        UPDATE produits
+        SET
+            id_categorie = :id_categorie,
+            nom = :nom,
+            description = :description,
+            prix = :prix,
+            stock = :stock,
+            image = :image,
+            statut = :statut
+        WHERE id_produit = :id
+    ";
+
+    $stmt = $this->db->prepare($sql);
+
+    return $stmt->execute([
+        'id_categorie' => (int) $data['id_categorie'],
+        'nom' => $data['nom'],
+        'description' => $data['description'] ?? null,
+        'prix' => $data['prix'],
+        'stock' => (int) $data['stock'],
+        'image' => $data['image'] ?? null,
+        'statut' => $data['statut'] ?? 'disponible',
+        'id' => $id
+    ]);
+}
+
 public function delete($id)
 {
     $sql = "

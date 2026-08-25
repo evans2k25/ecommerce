@@ -88,9 +88,22 @@ if (
     isset($_GET['success']) &&
     $_GET['success'] === 'deleted'
 ) {
-
-    $success =
-        "Le produit a été supprimé avec succès.";
+    $success = "Le produit a été supprimé avec succès.";
+} elseif (
+    isset($_GET['success']) &&
+    $_GET['success'] === 'created'
+) {
+    $success = "Le produit a été ajouté avec succès.";
+} elseif (
+    isset($_GET['success']) &&
+    $_GET['success'] === 'updated'
+) {
+    $success = "Le produit a été modifié avec succès.";
+} elseif (
+    isset($_GET['success']) &&
+    $_GET['success'] === 'archived'
+) {
+    $success = "Le produit a été archivé car il est lié à une commande.";
 }
 
 ?>

@@ -45,4 +45,47 @@ class Paiement
 
         return (int) $this->db->lastInsertId();
     }
+
+    public function getByCommande(int $commandeId): ?array
+    {
+        $sql = "
+            SELECT *
+            FROM paiements
+            WHERE id_commande = :id_commande
+            LIMIT 1
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['id_commande' => $commandeId]);
+        $paiement = $stmt->fetch();
+
+        return $paiement ?: null;
+    }
+
+    public function updateStatus(int $id, string $statut): bool
+    {
+        $statuts = [
+            'en_attente',
+            'accepte',
+            'refuse',
+            'rembourse'
+        ];
+
+        if (!in_array($statut, $statuts, true)) {
+            return false;
+        }
+
+        $sql = "
+            UPDATE paiements
+            SET statut = :statut
+            WHERE id_paiement = :id
+        ";
+
+        $stmt = $this->db->prepare($sql);
+
+        return $stmt->execute([
+            'statut' => $statut,
+            'id' => $id
+        ]);
+    }
 }

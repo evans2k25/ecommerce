@@ -94,7 +94,7 @@
                 <input type="search" name="q" class="form-control form-control-sm me-2" placeholder="Rechercher..."
                     aria-label="Rechercher">
 
-                <button class="btn btn-outline-light btn-sm" type="submit">
+                <button class="btn btn-outline-dark btn-sm" type="submit">
 
                     <i class="bi bi-search"></i>
 

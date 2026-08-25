@@ -46,4 +46,26 @@ class LigneCommande
 
         return (int) $this->db->lastInsertId();
     }
+
+    public function getByCommande(int $commandeId): array
+    {
+        $sql = "
+            SELECT
+                lc.id_ligne_commande,
+                lc.quantite,
+                lc.prix_unitaire,
+                lc.sous_total,
+                p.nom AS produit_nom,
+                p.image
+            FROM lignes_commande lc
+            INNER JOIN produits p
+                ON p.id_produit = lc.id_produit
+            WHERE lc.id_commande = :id_commande
+        ";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['id_commande' => $commandeId]);
+
+        return $stmt->fetchAll();
+    }
 }
