@@ -23,7 +23,7 @@ class Panier
     public static function add(
         int $productId,
         int $quantity,
-        float $price
+        float $prix
     ): void {
 
         self::init();
@@ -40,7 +40,7 @@ class Panier
 
             $_SESSION['cart'][$productId] = [
                 'quantity' => $quantity,
-                'price' => $price
+                'prix' => $prix
             ];
         }
     }
@@ -123,7 +123,7 @@ class Panier
         foreach ($_SESSION['cart'] as $item) {
 
             $subtotal +=
-                $item['price'] * $item['quantity'];
+                ($item['prix'] ?? 0) * $item['quantity'];
         }
 
         return $subtotal;

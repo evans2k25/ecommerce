@@ -1,771 +1,1139 @@
 <?php
 
-session_start();
-
-require_once __DIR__ . "/../../config/database.php";
-require_once __DIR__ . "/../../models/Produit.php";
-
 /*
 |--------------------------------------------------------------------------
-| Vérification de la connexion administrateur
+| AUTHENTIFICATION
 |--------------------------------------------------------------------------
 */
 
-if (!isset($_SESSION['admin'])) {
-    header("Location: ../login.php");
-    exit;
-}
+require_once __DIR__ . '/../includes/auth.php';
 
 
 /*
 |--------------------------------------------------------------------------
-| Connexion à la base de données
+| CONFIGURATION
 |--------------------------------------------------------------------------
 */
 
-$database = new Database();
-$db = $database->getConnection();
-
-$produitModel = new Produit($db);
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../models/Produit.php';
 
 
 /*
 |--------------------------------------------------------------------------
-| Récupération des produits
+| INITIALISATION
+|--------------------------------------------------------------------------
+*/
+
+$error = '';
+$success = '';
+
+$q = trim($_GET['q'] ?? '');
+
+$page = isset($_GET['page']) && ctype_digit($_GET['page'])
+    ? max(1, (int) $_GET['page'])
+    : 1;
+
+$perPage = 10;
+
+$produits = [];
+
+$total = 0;
+
+
+/*
+|--------------------------------------------------------------------------
+| CONNEXION BASE DE DONNÉES
 |--------------------------------------------------------------------------
 */
 
 try {
 
-    $produits = $produitModel->getAllAdmin();
+    $database = new Database();
+
+    $db = $database->getConnection();
+
+    $produitModel = new Produit($db);
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | RÉCUPÉRATION DES PRODUITS
+    |--------------------------------------------------------------------------
+    |
+    | On utilise les méthodes disponibles dans le modèle Produit.
+    |
+    */
+
+    if (!empty($q)) {
+
+        /*
+        | Recherche
+        */
+
+        if (method_exists($produitModel, 'search')) {
+
+            $produits = $produitModel->search($q);
+
+        } elseif (method_exists($produitModel, 'searchAdmin')) {
+
+            $produits = $produitModel->searchAdmin($q);
+
+        } else {
+
+            /*
+            | Recherche directe si le modèle ne possède
+            | pas de méthode search().
+            */
+
+            $sql = "
+                SELECT
+                    p.*,
+                    c.nom AS categorie_nom
+                FROM produits p
+                LEFT JOIN categories c
+                    ON c.id_categorie = p.id_categorie
+                WHERE
+                    p.nom LIKE :q
+                    OR p.description LIKE :q
+                ORDER BY p.id_produit DESC
+            ";
+
+            $stmt = $db->prepare($sql);
+
+            $stmt->execute([
+                ':q' => '%' . $q . '%'
+            ]);
+
+            $produits = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+    } else {
+
+        /*
+        | Récupération normale
+        */
+
+        if (method_exists($produitModel, 'getAllAdmin')) {
+
+            $produits = $produitModel->getAllAdmin();
+
+        } elseif (method_exists($produitModel, 'getAll')) {
+
+            $produits = $produitModel->getAll();
+
+        } else {
+
+            /*
+            | Requête de secours
+            */
+
+            $sql = "
+                SELECT
+                    p.*,
+                    c.nom AS categorie_nom
+                FROM produits p
+                LEFT JOIN categories c
+                    ON c.id_categorie = p.id_categorie
+                ORDER BY p.id_produit DESC
+            ";
+
+            $stmt = $db->query($sql);
+
+            $produits = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | SÉCURITÉ
+    |--------------------------------------------------------------------------
+    */
+
+    if (!is_array($produits)) {
+
+        $produits = [];
+
+    }
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | TOTAL
+    |--------------------------------------------------------------------------
+    */
+
+    $total = count($produits);
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | PAGINATION
+    |--------------------------------------------------------------------------
+    |
+    | Si le modèle retourne tous les produits, on fait la pagination
+    | ici.
+    |
+    */
+
+    if ($total > $perPage) {
+
+        $offset = ($page - 1) * $perPage;
+
+        $produits = array_slice(
+            $produits,
+            $offset,
+            $perPage
+        );
+
+    }
+
 
 } catch (Throwable $e) {
 
     $produits = [];
 
+    $total = 0;
+
     $error = $e->getMessage();
+
 }
 
 
 /*
 |--------------------------------------------------------------------------
-| Suppression d'un produit
+| MESSAGES
 |--------------------------------------------------------------------------
 */
 
-if (
-    isset($_GET['delete']) &&
-    ctype_digit($_GET['delete'])
-) {
+if (isset($_GET['success'])) {
 
-    $idProduit = (int) $_GET['delete'];
+    $messages = [
 
-    try {
+        'created' =>
+            'Le produit a été créé avec succès.',
 
-        $produitModel->delete($idProduit);
+        'updated' =>
+            'Le produit a été modifié avec succès.',
 
-        header("Location: index.php?success=deleted");
-        exit;
+        'deleted' =>
+            'Le produit a été supprimé avec succès.'
 
-    } catch (Throwable $e) {
+    ];
 
-        $error =
-            "Impossible de supprimer le produit : "
-            . $e->getMessage();
-    }
+    $success =
+        $messages[$_GET['success']]
+        ?? '';
+
+}
+
+
+if (isset($_GET['error'])) {
+
+    $error = htmlspecialchars(
+        $_GET['error'],
+        ENT_QUOTES,
+        'UTF-8'
+    );
+
 }
 
 
 /*
 |--------------------------------------------------------------------------
-| Messages
+| PAGE
 |--------------------------------------------------------------------------
 */
 
-$success = '';
+$pageTitle = 'Produits';
 
-if (
-    isset($_GET['success']) &&
-    $_GET['success'] === 'deleted'
-) {
-    $success = "Le produit a été supprimé avec succès.";
-} elseif (
-    isset($_GET['success']) &&
-    $_GET['success'] === 'created'
-) {
-    $success = "Le produit a été ajouté avec succès.";
-} elseif (
-    isset($_GET['success']) &&
-    $_GET['success'] === 'updated'
-) {
-    $success = "Le produit a été modifié avec succès.";
-} elseif (
-    isset($_GET['success']) &&
-    $_GET['success'] === 'archived'
-) {
-    $success = "Le produit a été archivé car il est lié à une commande.";
-}
+$adminPage = 'products';
+
+
+/*
+|--------------------------------------------------------------------------
+| HEADER
+|--------------------------------------------------------------------------
+*/
+
+require_once __DIR__ . '/../includes/header.php';
 
 ?>
-<!DOCTYPE html>
 
-<html lang="fr">
+<style>
+:root {
 
-<head>
+    --primary: #ED80E9;
+    --primary-dark: #C95BC5;
+    --primary-light: #F8D9F7;
 
-    <meta charset="UTF-8">
+    --dark: #1F1F29;
+    --text: #555;
+    --light: #F8F8FA;
+    --white: #FFFFFF;
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Gestion des produits - Administration</title>
-
-
-    <!-- Bootstrap -->
-
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
-
-    <!-- Bootstrap Icons -->
-
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    --success: #198754;
+    --danger: #dc3545;
+    --warning: #ffc107;
+}
 
 
-    <!-- Google Font -->
+/* =========================================================
+   BODY
+========================================================= */
 
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+body {
 
+    background-color: var(--light);
 
-    <style>
-    :root {
+    color: var(--text);
 
-        --primary: #ED80E9;
-        --primary-dark: #C95BC5;
-        --primary-light: #F5B3F2;
-
-        --dark: #1F1F29;
-        --text: #333333;
-        --light: #F8F8FA;
-        --white: #FFFFFF;
-
-    }
+}
 
 
-    * {
-        box-sizing: border-box;
-    }
+/* =========================================================
+   CONTENU
+========================================================= */
+
+.admin-content {
+
+    padding: 30px;
+
+}
 
 
-    body {
+.page-title {
 
-        font-family: "Poppins", sans-serif;
+    color: var(--dark);
 
-        background-color: var(--light);
+    font-size: 27px;
 
-        color: var(--text);
+    font-weight: 700;
 
-    }
-
-
-    /* Navbar */
-
-    .admin-navbar {
-
-        background: var(--dark);
-
-        min-height: 70px;
-
-    }
+}
 
 
-    .admin-navbar .navbar-brand {
+.page-title i {
 
-        color: var(--primary);
+    color: var(--primary);
 
-        font-weight: 700;
+    margin-right: 8px;
 
-        font-size: 1.3rem;
-
-    }
+}
 
 
-    .admin-navbar .navbar-brand:hover {
+.page-subtitle {
 
-        color: var(--primary-light);
+    color: #888;
 
-    }
+    font-size: 14px;
 
-
-    .admin-navbar .admin-name {
-
-        color: white;
-
-        font-size: 14px;
-
-    }
+}
 
 
-    /* Contenu */
+/* =========================================================
+   BOUTON PRINCIPAL
+========================================================= */
+
+.btn-primary-custom {
+
+    background-color: var(--primary);
+
+    border: none;
+
+    color: white;
+
+    padding: 11px 18px;
+
+    border-radius: 10px;
+
+    font-size: 13px;
+
+    font-weight: 600;
+
+    box-shadow:
+        0 5px 15px rgba(237, 128, 233, .25);
+
+    transition: all .25s ease;
+
+}
+
+
+.btn-primary-custom:hover {
+
+    background-color: var(--primary-dark);
+
+    color: white;
+
+    transform: translateY(-2px);
+
+    box-shadow:
+        0 8px 20px rgba(201, 91, 197, .30);
+
+}
+
+
+/* =========================================================
+   RECHERCHE
+========================================================= */
+
+.search-box {
+
+    background-color: white;
+
+    border-radius: 14px;
+
+    padding: 15px;
+
+    margin-bottom: 20px;
+
+    border: 1px solid #eee;
+
+    box-shadow:
+        0 5px 20px rgba(0, 0, 0, .04);
+
+}
+
+
+.search-box .form-control {
+
+    height: 43px;
+
+    border: 1px solid #e5e5e5;
+
+    font-size: 13px;
+
+    box-shadow: none;
+
+}
+
+
+.search-box .form-control:focus {
+
+    border-color: var(--primary);
+
+    box-shadow:
+        0 0 0 .2rem rgba(237, 128, 233, .12);
+
+}
+
+
+.search-box .input-group-text {
+
+    border-color: #e5e5e5;
+
+}
+
+
+/* =========================================================
+   ALERTES
+========================================================= */
+
+.alert {
+
+    border: none;
+
+    border-radius: 12px;
+
+    font-size: 13px;
+
+    box-shadow:
+        0 4px 15px rgba(0, 0, 0, .04);
+
+}
+
+
+/* =========================================================
+   CARTE PRODUITS
+========================================================= */
+
+.product-card {
+
+    background-color: white;
+
+    border-radius: 18px;
+
+    border: 1px solid rgba(0, 0, 0, .04);
+
+    box-shadow:
+        0 5px 25px rgba(0, 0, 0, .05);
+
+    overflow: hidden;
+
+}
+
+
+/* =========================================================
+   TABLEAU
+========================================================= */
+
+.product-card .table {
+
+    margin-bottom: 0;
+
+    vertical-align: middle;
+
+}
+
+
+.product-card .table thead th {
+
+    background-color: #fafafa;
+
+    color: #777;
+
+    border-bottom: 1px solid #eee;
+
+    font-size: 11px;
+
+    font-weight: 700;
+
+    text-transform: uppercase;
+
+    letter-spacing: .4px;
+
+    padding: 16px 15px;
+
+    white-space: nowrap;
+
+}
+
+
+.product-card .table tbody td {
+
+    padding: 15px;
+
+    border-bottom: 1px solid #f1f1f1;
+
+    font-size: 13px;
+
+    color: #555;
+
+}
+
+
+.product-card .table tbody tr {
+
+    transition: all .2s ease;
+
+}
+
+
+.product-card .table tbody tr:hover {
+
+    background-color: #fff8ff;
+
+}
+
+
+.product-card .table tbody tr:last-child td {
+
+    border-bottom: none;
+
+}
+
+
+/* =========================================================
+   IMAGE PRODUIT
+========================================================= */
+
+.product-image,
+.product-placeholder {
+
+    width: 52px;
+
+    height: 52px;
+
+    min-width: 52px;
+
+    border-radius: 12px;
+
+}
+
+
+.product-image {
+
+    object-fit: cover;
+
+    border: 1px solid #eee;
+
+    background-color: #fafafa;
+
+}
+
+
+.product-placeholder {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    background-color: var(--primary-light);
+
+    color: var(--primary-dark);
+
+    font-size: 20px;
+
+}
+
+
+.product-name {
+
+    color: var(--dark);
+
+    font-size: 13px;
+
+    font-weight: 650;
+
+    margin-bottom: 3px;
+
+}
+
+
+/* =========================================================
+   PRIX
+========================================================= */
+
+.product-price {
+
+    color: var(--primary-dark);
+
+    font-weight: 700;
+
+    white-space: nowrap;
+
+}
+
+
+/* =========================================================
+   STOCK
+========================================================= */
+
+.stock-ok,
+.stock-low {
+
+    display: inline-flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    min-width: 55px;
+
+    padding: 5px 9px;
+
+    border-radius: 7px;
+
+    font-size: 12px;
+
+    font-weight: 700;
+
+}
+
+
+.stock-ok {
+
+    color: #146c43;
+
+    background-color: #d1e7dd;
+
+}
+
+
+.stock-low {
+
+    color: #842029;
+
+    background-color: #f8d7da;
+
+}
+
+
+/* =========================================================
+   STATUT
+========================================================= */
+
+.badge-status {
+
+    display: inline-block;
+
+    padding: 6px 10px;
+
+    border-radius: 7px;
+
+    font-size: 10px;
+
+    font-weight: 700;
+
+}
+
+
+.badge-disponible {
+
+    color: #146c43;
+
+    background-color: #d1e7dd;
+
+}
+
+
+.badge-indisponible {
+
+    color: #664d03;
+
+    background-color: #fff3cd;
+
+}
+
+
+.badge-archive {
+
+    color: #41464b;
+
+    background-color: #e2e3e5;
+
+}
+
+
+/* =========================================================
+   ACTIONS
+========================================================= */
+
+.action-btn {
+
+    width: 37px;
+
+    height: 37px;
+
+    display: inline-flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    border-radius: 9px;
+
+    border: none;
+
+    text-decoration: none;
+
+    transition: all .25s ease;
+
+}
+
+
+.btn-edit {
+
+    background-color: #f1e8ff;
+
+    color: #6f42c1;
+
+}
+
+
+.btn-edit:hover {
+
+    background-color: #6f42c1;
+
+    color: white;
+
+    transform: translateY(-2px);
+
+}
+
+
+.btn-delete {
+
+    background-color: #ffe8e8;
+
+    color: var(--danger);
+
+}
+
+
+.btn-delete:hover {
+
+    background-color: var(--danger);
+
+    color: white;
+
+    transform: translateY(-2px);
+
+}
+
+
+/* =========================================================
+   PRODUIT VIDE
+========================================================= */
+
+.empty-product {
+
+    padding: 60px 20px;
+
+    text-align: center;
+
+}
+
+
+.empty-product i {
+
+    display: block;
+
+    font-size: 50px;
+
+    color: #ddd;
+
+    margin-bottom: 15px;
+
+}
+
+
+.empty-product h5 {
+
+    color: var(--dark);
+
+    font-weight: 700;
+
+}
+
+
+.empty-product p {
+
+    color: #999;
+
+    font-size: 13px;
+
+}
+
+
+/* =========================================================
+   PAGINATION
+========================================================= */
+
+.pagination {
+
+    margin-bottom: 0;
+
+}
+
+
+.pagination .page-link {
+
+    color: var(--primary-dark);
+
+    border: none;
+
+    margin: 0 3px;
+
+    border-radius: 8px;
+
+    font-size: 13px;
+
+    font-weight: 600;
+
+}
+
+
+.pagination .page-link:hover {
+
+    background-color: var(--primary-light);
+
+    color: var(--primary-dark);
+
+}
+
+
+.pagination .page-item.active .page-link {
+
+    background-color: var(--primary);
+
+    color: white;
+
+    box-shadow:
+        0 4px 10px rgba(237, 128, 233, .25);
+
+}
+
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width:768px) {
 
     .admin-content {
 
-        padding: 35px;
+        padding: 20px 15px;
 
     }
 
-
-    /* En-tête */
 
     .page-title {
-
-        font-weight: 700;
-
-        color: var(--dark);
-
-    }
-
-
-    .page-subtitle {
-
-        color: #777;
-
-        font-size: 14px;
-
-    }
-
-
-    /* Bouton principal */
-
-    .btn-primary-custom {
-
-        background-color: var(--primary);
-
-        border-color: var(--primary);
-
-        color: white;
-
-        font-weight: 600;
-
-        border-radius: 10px;
-
-        padding: 10px 18px;
-
-    }
-
-
-    .btn-primary-custom:hover {
-
-        background-color: var(--primary-dark);
-
-        border-color: var(--primary-dark);
-
-        color: white;
-
-    }
-
-
-    /* Carte */
-
-    .product-card {
-
-        background: white;
-
-        border: none;
-
-        border-radius: 16px;
-
-        box-shadow:
-            0 5px 25px rgba(0, 0, 0, 0.06);
-
-        overflow: hidden;
-
-    }
-
-
-    /* Tableau */
-
-    .table {
-
-        margin-bottom: 0;
-
-        vertical-align: middle;
-
-    }
-
-
-    .table thead {
-
-        background-color: #faf5fa;
-
-    }
-
-
-    .table thead th {
-
-        color: var(--dark);
-
-        font-size: 13px;
-
-        font-weight: 600;
-
-        border-bottom: 1px solid #eee;
-
-        padding: 16px;
-
-    }
-
-
-    .table tbody td {
-
-        padding: 15px;
-
-        font-size: 14px;
-
-        border-color: #f0f0f0;
-
-    }
-
-
-    .table tbody tr:hover {
-
-        background-color: #fff8ff;
-
-    }
-
-
-    /* Image produit */
-
-    .product-image {
-
-        width: 60px;
-
-        height: 60px;
-
-        border-radius: 10px;
-
-        object-fit: cover;
-
-        background-color: #f4f4f4;
-
-    }
-
-
-    .product-placeholder {
-
-        width: 60px;
-
-        height: 60px;
-
-        border-radius: 10px;
-
-        background-color: #f4f4f4;
-
-        display: flex;
-
-        align-items: center;
-
-        justify-content: center;
-
-        color: #aaa;
 
         font-size: 22px;
 
     }
 
 
-    .product-name {
+    .product-card {
 
-        font-weight: 600;
-
-        color: var(--dark);
+        border-radius: 14px;
 
     }
 
 
-    /* Prix */
+    .product-card .table thead th,
+    .product-card .table tbody td {
 
-    .product-price {
-
-        color: var(--primary-dark);
-
-        font-weight: 700;
+        padding: 12px 10px;
 
     }
 
 
-    /* Badges */
+    .btn-primary-custom {
 
-    .badge-status {
-
-        padding: 7px 11px;
-
-        border-radius: 20px;
-
-        font-size: 11px;
-
-        font-weight: 600;
+        padding: 9px 13px;
 
     }
 
+}
+</style>
 
-    .badge-disponible {
 
-        background-color: #e8f8ef;
+<!-- =========================================================
+     CONTENU
+========================================================= -->
 
-        color: #198754;
+<main class="admin-content">
 
-    }
+    <div class="container-fluid">
 
 
-    .badge-indisponible {
+        <!-- =====================================================
+             EN-TÊTE
+        ====================================================== -->
 
-        background-color: #fff3cd;
+        <div class="d-flex justify-content-between align-items-center mb-4">
 
-        color: #856404;
+            <div>
 
-    }
+                <h1 class="page-title mb-1">
 
+                    <i class="bi bi-box-seam"></i>
 
-    .badge-archive {
+                    Produits
 
-        background-color: #eeeeee;
+                </h1>
 
-        color: #666;
+                <p class="page-subtitle mb-0">
 
-    }
+                    Gérez les produits de votre boutique.
 
+                </p>
 
-    /* Stock */
+            </div>
 
-    .stock-ok {
 
-        color: #198754;
+            <a href="create.php" class="btn btn-primary-custom">
 
-        font-weight: 600;
+                <i class="bi bi-plus-lg me-1"></i>
 
-    }
-
-
-    .stock-low {
-
-        color: #dc3545;
-
-        font-weight: 600;
-
-    }
-
-
-    /* Actions */
-
-    .action-btn {
-
-        width: 36px;
-
-        height: 36px;
-
-        display: inline-flex;
-
-        align-items: center;
-
-        justify-content: center;
-
-        border-radius: 8px;
-
-        border: none;
-
-    }
-
-
-    .btn-edit {
-
-        background-color: #f1e8ff;
-
-        color: #6f42c1;
-
-    }
-
-
-    .btn-edit:hover {
-
-        background-color: #6f42c1;
-
-        color: white;
-
-    }
-
-
-    .btn-delete {
-
-        background-color: #ffe8e8;
-
-        color: #dc3545;
-
-    }
-
-
-    .btn-delete:hover {
-
-        background-color: #dc3545;
-
-        color: white;
-
-    }
-
-
-    /* Responsive */
-
-    @media (max-width: 768px) {
-
-        .admin-content {
-
-            padding: 20px;
-
-        }
-
-    }
-    </style>
-
-</head>
-
-
-<body>
-
-
-
-
-    <!--
-|--------------------------------------------------------------------------
-| Navbar administration
-|--------------------------------------------------------------------------
--->
-
-    <nav class="navbar admin-navbar">
-
-        <div class="container-fluid px-4">
-
-            <a href="../dashboard.php" class="navbar-brand">
-
-                <i class="bi bi-shop"></i>
-
-                E-Commerce Admin
+                Ajouter un produit
 
             </a>
 
-
-            <div class="d-flex align-items-center gap-3">
-
-                <span class="admin-name">
-
-                    <i class="bi bi-person-circle"></i>
-
-                    <?= htmlspecialchars(
-                    $_SESSION['admin']['prenom']
-                    ?? $_SESSION['admin']['nom']
-                    ?? 'Administrateur'
-                ) ?>
-
-                </span>
-
-
-                <a href="../logout.php" class="btn btn-outline-light btn-sm">
-
-                    <i class="bi bi-box-arrow-right"></i>
-
-                    Déconnexion
-
-                </a>
-
-            </div>
-
         </div>
 
-    </nav>
+
+        <!-- =====================================================
+             RECHERCHE
+        ====================================================== -->
+
+        <div class="search-box">
+
+            <form method="GET">
+
+                <div class="row g-2 align-items-center">
+
+                    <div class="col">
+
+                        <div class="input-group">
+
+                            <span class="input-group-text bg-white">
+
+                                <i class="bi bi-search text-muted"></i>
+
+                            </span>
 
 
-    <!--
-|--------------------------------------------------------------------------
-| Contenu
-|--------------------------------------------------------------------------
--->
+                            <input type="text" name="q" value="<?= htmlspecialchars($q) ?>" class="form-control"
+                                placeholder="Rechercher un produit...">
 
-    <main class="admin-content">
+                        </div>
 
-        <div class="container-fluid">
+                    </div>
 
 
-            <!-- En-tête -->
+                    <div class="col-auto">
 
-            <div class="d-flex justify-content-between align-items-center mb-4">
+                        <button type="submit" class="btn btn-primary-custom">
 
-                <div>
+                            <i class="bi bi-search me-1"></i>
 
-                    <h1 class="page-title mb-1">
+                            Rechercher
 
-                        <i class="bi bi-box-seam"></i>
+                        </button>
 
-                        Produits
+                    </div>
 
-                    </h1>
 
-                    <p class="page-subtitle mb-0">
+                    <?php if (!empty($q)): ?>
 
-                        Gérez les produits de votre boutique.
+                    <div class="col-auto">
 
-                    </p>
+                        <a href="index.php" class="btn btn-light border" title="Réinitialiser">
+
+                            <i class="bi bi-x-lg"></i>
+
+                        </a>
+
+                    </div>
+
+                    <?php endif; ?>
 
                 </div>
 
+            </form>
 
-                <a href="create.php" class="btn btn-primary-custom">
-
-                    <i class="bi bi-plus-lg"></i>
-
-                    Ajouter un produit
-
-                </a>
-
-            </div>
+        </div>
 
 
-            <!--
-        |--------------------------------------------------------------------------
-        | Message succès
-        |--------------------------------------------------------------------------
-        -->
+        <!-- =====================================================
+             MESSAGE SUCCÈS
+        ====================================================== -->
 
-            <?php if ($success): ?>
+        <?php if (!empty($success)): ?>
 
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <div class="alert alert-success alert-dismissible fade show mb-4" role="alert">
 
-                <i class="bi bi-check-circle"></i>
+            <i class="bi bi-check-circle me-2"></i>
 
-                <?= htmlspecialchars($success) ?>
+            <?= htmlspecialchars($success) ?>
 
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
 
-            </div>
+        </div>
 
-            <?php endif; ?>
+        <?php endif; ?>
 
 
-            <!--
-        |--------------------------------------------------------------------------
-        | Message erreur
-        |--------------------------------------------------------------------------
-        -->
+        <!-- =====================================================
+             MESSAGE ERREUR
+        ====================================================== -->
 
-            <?php if (!empty($error)): ?>
+        <?php if (!empty($error)): ?>
 
-            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <div class="alert alert-danger alert-dismissible fade show mb-4" role="alert">
 
-                <i class="bi bi-exclamation-triangle"></i>
+            <i class="bi bi-exclamation-triangle me-2"></i>
 
-                <?= htmlspecialchars($error) ?>
+            <?= htmlspecialchars($error) ?>
 
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
 
-            </div>
+        </div>
 
-            <?php endif; ?>
+        <?php endif; ?>
 
 
-            <!--
-        |--------------------------------------------------------------------------
-        | Tableau
-        |--------------------------------------------------------------------------
-        -->
+        <!-- =====================================================
+             TABLEAU
+        ====================================================== -->
 
-            <div class="product-card">
+        <div class="product-card">
 
-                <div class="table-responsive">
+            <div class="table-responsive">
 
-                    <table class="table">
+                <table class="table">
 
-                        <thead>
+                    <thead>
 
-                            <tr>
+                        <tr>
 
-                                <th>#</th>
+                            <th>#</th>
 
-                                <th>Produit</th>
+                            <th>Produit</th>
 
-                                <th>Catégorie</th>
+                            <th>Catégorie</th>
 
-                                <th>Prix</th>
+                            <th>Prix</th>
 
-                                <th>Stock</th>
+                            <th>Stock</th>
 
-                                <th>Statut</th>
+                            <th>Statut</th>
 
-                                <th class="text-end">
-                                    Actions
-                                </th>
+                            <th class="text-end">
+                                Actions
+                            </th>
 
-                            </tr>
+                        </tr>
 
-                        </thead>
+                    </thead>
 
 
-                        <tbody>
+                    <tbody>
 
-                            <?php if (empty($produits)): ?>
 
-                            <tr>
+                        <?php if (empty($produits)): ?>
 
-                                <td colspan="7" class="text-center py-5">
+                        <tr>
 
-                                    <div class="mb-3">
+                            <td colspan="7">
 
-                                        <i class="bi bi-box-seam" style="
-                                            font-size: 45px;
-                                            color: #ccc;
-                                        "></i>
+                                <div class="empty-product">
 
-                                    </div>
+                                    <i class="bi bi-box-seam"></i>
 
                                     <h5>
-
                                         Aucun produit
-
                                     </h5>
 
-                                    <p class="text-muted">
-
-                                        Aucun produit n'a encore
-                                        été ajouté.
-
+                                    <p>
+                                        Aucun produit n'a encore été ajouté.
                                     </p>
-
 
                                     <a href="create.php" class="btn btn-primary-custom">
 
-                                        <i class="bi bi-plus-lg"></i>
+                                        <i class="bi bi-plus-lg me-1"></i>
 
                                         Ajouter le premier produit
 
                                     </a>
 
-                                </td>
+                                </div>
 
-                            </tr>
+                            </td>
 
-                            <?php else: ?>
+                        </tr>
 
 
-                            <?php foreach (
-                            $produits as $produit
-                        ): ?>
+                        <?php else: ?>
 
-                            <?php
+
+                        <?php foreach ($produits as $produit): ?>
+
+
+                        <?php
 
                             $statut =
                                 $produit['statut']
                                 ?? 'disponible';
 
 
-                            if (
-                                $statut ===
-                                'disponible'
-                            ) {
+                            if ($statut === 'disponible') {
 
                                 $badgeClass =
                                     'badge-disponible';
@@ -774,8 +1142,7 @@ if (
                                     'Disponible';
 
                             } elseif (
-                                $statut ===
-                                'indisponible'
+                                $statut === 'indisponible'
                             ) {
 
                                 $badgeClass =
@@ -791,212 +1158,263 @@ if (
 
                                 $badgeText =
                                     'Archivé';
+
                             }
 
 
-                            $stock =
-                                (int) (
-                                    $produit['stock']
-                                    ?? 0
-                                );
+                            $stock = (int)(
+                                $produit['stock']
+                                ?? 0
+                            );
 
                             ?>
 
 
-                            <tr>
+                        <tr>
 
 
-                                <!-- ID -->
+                            <!-- ID -->
 
-                                <td>
+                            <td>
 
-                                    <?= (int)
-                                        $produit[
-                                            'id_produit'
-                                        ]
-                                    ?>
+                                <span class="text-muted">
 
-                                </td>
+                                    #<?= (int)
+                                            $produit['id_produit']
+                                        ?>
+
+                                </span>
+
+                            </td>
 
 
-                                <!-- Produit -->
+                            <!-- PRODUIT -->
 
-                                <td>
+                            <td>
 
-                                    <div class="d-flex align-items-center gap-3">
+                                <div class="d-flex align-items-center gap-3">
 
-                                        <?php if (
-                                            !empty(
-                                                $produit['image']
-                                            )
+
+                                    <?php if (
+                                            !empty($produit['image'])
                                         ): ?>
 
-                                        <img src="../../uploads/products/<?= htmlspecialchars(
+                                    <img src="../../uploads/products/<?= htmlspecialchars(
                                                     $produit['image']
                                                 ) ?>" alt="<?= htmlspecialchars(
                                                     $produit['nom']
                                                 ) ?>" class="product-image">
 
-                                        <?php else: ?>
+                                    <?php else: ?>
 
-                                        <div class="product-placeholder">
+                                    <div class="product-placeholder">
 
-                                            <i class="bi bi-image"></i>
-
-                                        </div>
-
-                                        <?php endif; ?>
-
-
-                                        <div>
-
-                                            <div class="product-name">
-
-                                                <?= htmlspecialchars(
-                                                    $produit['nom']
-                                                ) ?>
-
-                                            </div>
-
-                                            <small class="text-muted">
-
-                                                ID :
-                                                <?= (int)
-                                                    $produit[
-                                                        'id_produit'
-                                                    ]
-                                                ?>
-
-                                            </small>
-
-                                        </div>
+                                        <i class="bi bi-image"></i>
 
                                     </div>
 
-                                </td>
+                                    <?php endif; ?>
 
 
-                                <!-- Catégorie -->
+                                    <div>
 
-                                <td>
+                                        <div class="product-name">
 
-                                    <?= htmlspecialchars(
-                                        $produit[
-                                            'categorie_nom'
-                                        ]
+                                            <?= htmlspecialchars(
+                                                    $produit['nom']
+                                                ) ?>
+
+                                        </div>
+
+                                        <small class="text-muted">
+
+                                            ID :
+                                            <?= (int)
+                                                    $produit['id_produit']
+                                                ?>
+
+                                        </small>
+
+                                    </div>
+
+                                </div>
+
+                            </td>
+
+
+                            <!-- CATÉGORIE -->
+
+                            <td>
+
+                                <?= htmlspecialchars(
+                                        $produit['categorie_nom']
                                         ?? 'Sans catégorie'
                                     ) ?>
 
-                                </td>
+                            </td>
 
 
-                                <!-- Prix -->
+                            <!-- PRIX -->
 
-                                <td>
+                            <td>
 
-                                    <span class="product-price">
+                                <span class="product-price">
 
-                                        <?= number_format(
-                                            (float)
-                                            $produit['prix'],
+                                    <?= number_format(
+                                            (float)$produit['prix'],
                                             0,
                                             ',',
                                             ' '
                                         ) ?>
 
-                                        FCFA
+                                    FCFA
 
-                                    </span>
+                                </span>
 
-                                </td>
-
-
-                                <!-- Stock -->
-
-                                <td>
-
-                                    <span class="<?= $stock <= 5
-                                            ? 'stock-low'
-                                            : 'stock-ok'
-                                        ?>">
-
-                                        <?= $stock ?>
-
-                                    </span>
-
-                                </td>
+                            </td>
 
 
-                                <!-- Statut -->
+                            <!-- STOCK -->
 
-                                <td>
+                            <td>
 
-                                    <span class="badge-status
-                                        <?= $badgeClass ?>">
+                                <?php if ($stock <= 5): ?>
 
-                                        <?= $badgeText ?>
+                                <span class="stock-low">
 
-                                    </span>
+                                    <i class="bi bi-exclamation-triangle me-1"></i>
 
-                                </td>
+                                    <?= $stock ?>
 
+                                </span>
 
-                                <!-- Actions -->
+                                <?php else: ?>
 
-                                <td class="text-end">
+                                <span class="stock-ok">
 
-                                    <div class="d-flex
-                                        justify-content-end
-                                        gap-2">
+                                    <i class="bi bi-check-circle me-1"></i>
 
+                                    <?= $stock ?>
 
-                                        <!-- Modifier -->
+                                </span>
 
-                                        <a href="edit.php?id=<?= (int) $produit['id_produit'] ?>"
-                                            class="action-btn btn-edit" title="Modifier">
+                                <?php endif; ?>
 
-                                            <i class="bi bi-pencil"></i>
-
-                                        </a>
+                            </td>
 
 
-                                        <!-- Supprimer -->
+                            <!-- STATUT -->
 
-                                        <a href="delete.php?id=<?= (int) $produit['id_produit'] ?>"
-                                            class="action-btn btn-delete" title="Supprimer" onclick="return confirm(
+                            <td>
+
+                                <span class="badge-status <?= $badgeClass ?>">
+
+                                    <?= $badgeText ?>
+
+                                </span>
+
+                            </td>
+
+
+                            <!-- ACTIONS -->
+
+                            <td class="text-end">
+
+                                <div class="d-flex justify-content-end gap-2">
+
+                                    <a href="edit.php?id=<?= (int)$produit['id_produit'] ?>" class="action-btn btn-edit"
+                                        title="Modifier">
+
+                                        <i class="bi bi-pencil"></i>
+
+                                    </a>
+
+
+                                    <a href="delete.php?id=<?= (int)$produit['id_produit'] ?>"
+                                        class="action-btn btn-delete" title="Supprimer" onclick="return confirm(
                                                 'Voulez-vous vraiment supprimer ce produit ?'
                                             );">
 
-                                            <i class="bi bi-trash"></i>
+                                        <i class="bi bi-trash"></i>
 
-                                        </a>
+                                    </a>
 
-                                    </div>
+                                </div>
 
-                                </td>
+                            </td>
 
-                            </tr>
-
-                            <?php endforeach; ?>
+                        </tr>
 
 
-                            <?php endif; ?>
+                        <?php endforeach; ?>
 
-                        </tbody>
 
-                    </table>
+                        <?php endif; ?>
 
-                </div>
+
+                    </tbody>
+
+                </table>
 
             </div>
 
         </div>
 
-    </main>
+
+        <!-- =====================================================
+             PAGINATION
+        ====================================================== -->
+
+        <?php if ($total > $perPage): ?>
+
+        <?php
+
+            $pages = (int)ceil(
+                $total / $perPage
+            );
+
+            ?>
 
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+        <nav class="d-flex justify-content-end mt-3" aria-label="Pagination">
 
-</body>
+            <ul class="pagination">
 
-</html>
+
+                <?php for (
+                        $p = 1;
+                        $p <= $pages;
+                        $p++
+                    ): ?>
+
+                <li class="page-item
+                            <?= $p === $page ? 'active' : '' ?>">
+
+                    <a class="page-link" href="?q=<?= urlencode($q) ?>&page=<?= $p ?>">
+
+                        <?= $p ?>
+
+                    </a>
+
+                </li>
+
+                <?php endfor; ?>
+
+
+            </ul>
+
+        </nav>
+
+        <?php endif; ?>
+
+
+    </div>
+
+</main>
+
+
+<?php
+
+require_once __DIR__ . '/../includes/footer.php';
+
+?>

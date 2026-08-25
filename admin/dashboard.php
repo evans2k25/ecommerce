@@ -1,172 +1,129 @@
 <?php
 
-session_start();
-
-require_once __DIR__ . "/../config/database.php";
-
+require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/../config/database.php';
 
 /*
 |--------------------------------------------------------------------------
-| Vérification de la connexion administrateur
+| Configuration de la page
 |--------------------------------------------------------------------------
 */
 
-if (!isset($_SESSION['admin'])) {
-
-    header("Location: login.php");
-    exit;
-}
+$pageTitle = 'Tableau de bord';
+$adminPage = 'dashboard';
 
 
 /*
 |--------------------------------------------------------------------------
-| Récupérer les informations de l'administrateur
+| Variables par défaut
 |--------------------------------------------------------------------------
 */
 
-$admin = $_SESSION['admin'];
+$totalProduits = 0;
+$totalCategories = 0;
+$totalClients = 0;
+$totalCommandes = 0;
 
-$adminNom = htmlspecialchars(
-    ($admin['prenom'] ?? '') . ' ' . ($admin['nom'] ?? '')
-);
+$chiffreAffaires = 0;
 
-$adminRole = htmlspecialchars(
-    $admin['role'] ?? 'admin'
-);
+$commandesAttente = 0;
+$commandesLivrees = 0;
+
+$stockFaible = 0;
+
+$dernieresCommandes = [];
+$produitsStockFaible = [];
+
+$error = '';
 
 
 /*
 |--------------------------------------------------------------------------
-| Connexion à la base de données
+| Connexion base de données
 |--------------------------------------------------------------------------
 */
 
 try {
 
     $database = new Database();
-
     $db = $database->getConnection();
 
-} catch (PDOException $e) {
-
-    die(
-        "Erreur de connexion à la base de données : "
-        . htmlspecialchars($e->getMessage())
-    );
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| Statistiques
-|--------------------------------------------------------------------------
-*/
-
-try {
 
     /*
-    | Nombre de produits
+    |--------------------------------------------------------------------------
+    | STATISTIQUES
+    |--------------------------------------------------------------------------
     */
 
+
+    // Produits disponibles
     $stmt = $db->query("
-        SELECT COUNT(*) 
+        SELECT COUNT(*)
         FROM produits
+        WHERE statut = 'disponible'
     ");
 
-    $totalProduits =
-        (int) $stmt->fetchColumn();
+    $totalProduits = (int) $stmt->fetchColumn();
 
 
-    /*
-    | Nombre de catégories
-    */
-
+    // Catégories
     $stmt = $db->query("
         SELECT COUNT(*)
         FROM categories
     ");
 
-    $totalCategories =
-        (int) $stmt->fetchColumn();
+    $totalCategories = (int) $stmt->fetchColumn();
 
 
-    /*
-    | Nombre de clients
-    */
-
+    // Clients
     $stmt = $db->query("
         SELECT COUNT(*)
         FROM clients
     ");
 
-    $totalClients =
-        (int) $stmt->fetchColumn();
+    $totalClients = (int) $stmt->fetchColumn();
 
 
-    /*
-    | Nombre de commandes
-    */
-
+    // Commandes
     $stmt = $db->query("
         SELECT COUNT(*)
         FROM commandes
     ");
 
-    $totalCommandes =
-        (int) $stmt->fetchColumn();
+    $totalCommandes = (int) $stmt->fetchColumn();
 
 
-    /*
-    | Chiffre d'affaires
-    |
-    | On exclut les commandes annulées.
-    */
-
+    // Chiffre d'affaires
     $stmt = $db->query("
-        SELECT COALESCE(
-            SUM(montant_total),
-            0
-        )
+        SELECT COALESCE(SUM(montant_total), 0)
         FROM commandes
         WHERE statut != 'annulee'
     ");
 
-    $chiffreAffaires =
-        (float) $stmt->fetchColumn();
+    $chiffreAffaires = (float) $stmt->fetchColumn();
 
 
-    /*
-    | Commandes en attente
-    */
-
+    // Commandes en attente
     $stmt = $db->query("
         SELECT COUNT(*)
         FROM commandes
         WHERE statut = 'en_attente'
     ");
 
-    $commandesAttente =
-        (int) $stmt->fetchColumn();
+    $commandesAttente = (int) $stmt->fetchColumn();
 
 
-    /*
-    | Commandes livrées
-    */
-
+    // Commandes livrées
     $stmt = $db->query("
         SELECT COUNT(*)
         FROM commandes
         WHERE statut = 'livree'
     ");
 
-    $commandesLivrees =
-        (int) $stmt->fetchColumn();
+    $commandesLivrees = (int) $stmt->fetchColumn();
 
 
-    /*
-    | Produits avec stock faible
-    */
-
+    // Produits en stock faible
     $stmt = $db->query("
         SELECT COUNT(*)
         FROM produits
@@ -174,37 +131,25 @@ try {
         AND statut = 'disponible'
     ");
 
-    $stockFaible =
-        (int) $stmt->fetchColumn();
+    $stockFaible = (int) $stmt->fetchColumn();
 
 
-} catch (PDOException $e) {
-
-    die(
-        "Erreur lors du chargement des statistiques : "
-        . htmlspecialchars($e->getMessage())
-    );
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| Dernières commandes
-|--------------------------------------------------------------------------
-*/
-
-try {
+    /*
+    |--------------------------------------------------------------------------
+    | DERNIÈRES COMMANDES
+    |--------------------------------------------------------------------------
+    */
 
     $stmt = $db->query("
         SELECT
             c.id_commande,
             c.numero_commande,
-            c.reference,
             c.montant_total,
             c.statut,
             c.date_commande,
             cl.nom,
             cl.prenom
+
         FROM commandes c
 
         INNER JOIN clients cl
@@ -215,22 +160,14 @@ try {
         LIMIT 8
     ");
 
-    $dernieresCommandes =
-        $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-} catch (PDOException $e) {
-
-    $dernieresCommandes = [];
-}
+    $dernieresCommandes = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 
-/*
-|--------------------------------------------------------------------------
-| Produits avec stock faible
-|--------------------------------------------------------------------------
-*/
-
-try {
+    /*
+    |--------------------------------------------------------------------------
+    | PRODUITS EN STOCK FAIBLE
+    |--------------------------------------------------------------------------
+    */
 
     $stmt = $db->query("
         SELECT
@@ -239,6 +176,7 @@ try {
             p.stock,
             p.prix,
             c.nom AS categorie
+
         FROM produits p
 
         INNER JOIN categories c
@@ -252,22 +190,28 @@ try {
         LIMIT 8
     ");
 
-    $produitsStockFaible =
-        $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $produitsStockFaible = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
 
 } catch (PDOException $e) {
 
-    $produitsStockFaible = [];
+    error_log(
+        "admin/dashboard.php statistics error: "
+        . $e->getMessage()
+    );
+
+    $error = "Impossible de charger les statistiques.";
+
 }
 
 
 /*
 |--------------------------------------------------------------------------
-| Formatage du statut
+| Fonction statut commande
 |--------------------------------------------------------------------------
 */
 
-function statutCommande($statut)
+function statutCommande(string $statut): array
 {
 
     $statuts = [
@@ -301,6 +245,7 @@ function statutCommande($statut)
             'label' => 'Annulée',
             'class' => 'danger'
         ]
+
     ];
 
     return $statuts[$statut]
@@ -311,1266 +256,1386 @@ function statutCommande($statut)
 }
 
 
-$pageTitle = "Tableau de bord";
+/*
+|--------------------------------------------------------------------------
+| Header
+|--------------------------------------------------------------------------
+*/
+
+require_once __DIR__ . '/includes/header.php';
 
 ?>
 
-<!DOCTYPE html>
 
-<html lang="fr">
+<style>
+/*
+|--------------------------------------------------------------------------
+| VARIABLES
+|--------------------------------------------------------------------------
+*/
 
-<head>
+:root {
 
-    <meta charset="UTF-8">
+    --primary: #ED80E9;
+    --primary-dark: #C95BC5;
+    --primary-light: #F8D9F7;
 
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    --dark: #1F1F29;
+    --text: #555;
 
-    <title>
-        <?= htmlspecialchars($pageTitle) ?> - E-Commerce
-    </title>
+    --light: #F8F8FA;
+    --white: #FFFFFF;
 
+    --success: #198754;
+    --warning: #ffc107;
+    --danger: #dc3545;
+    --info: #0dcaf0;
 
-    <!-- Bootstrap -->
-
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
-
-    <!-- Bootstrap Icons -->
-
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-
-
-    <!-- Google Font -->
-
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+}
 
 
-    <style>
-    :root {
+/*
+|--------------------------------------------------------------------------
+| BODY
+|--------------------------------------------------------------------------
+*/
 
-        --primary: #ED80E9;
+body {
 
-        --primary-dark: #C95BC5;
+    background-color: var(--light);
+    color: var(--text);
 
-        --primary-light: #F5B3F2;
+}
 
-        --dark: #1F1F29;
 
-        --text: #333333;
+/*
+|--------------------------------------------------------------------------
+| WELCOME
+|--------------------------------------------------------------------------
+*/
 
-        --light: #F8F8FA;
+.welcome-box {
 
-        --white: #FFFFFF;
+    position: relative;
+
+    overflow: hidden;
+
+    background:
+        linear-gradient(135deg,
+            var(--primary),
+            var(--primary-dark));
+
+    color: white;
+
+    border-radius: 20px;
+
+    padding: 28px 30px;
+
+    margin-bottom: 30px;
+
+    box-shadow:
+        0 10px 30px rgba(201, 91, 197, .20);
+
+}
+
+
+.welcome-box::after {
+
+    content: "";
+
+    position: absolute;
+
+    width: 180px;
+    height: 180px;
+
+    border-radius: 50%;
+
+    background:
+        rgba(255, 255, 255, .10);
+
+    right: -50px;
+    top: -70px;
+
+}
+
+
+.welcome-box::before {
+
+    content: "";
+
+    position: absolute;
+
+    width: 120px;
+    height: 120px;
+
+    border-radius: 50%;
+
+    background:
+        rgba(255, 255, 255, .08);
+
+    right: 100px;
+    bottom: -70px;
+
+}
+
+
+.welcome-box h2 {
+
+    position: relative;
+
+    z-index: 2;
+
+    font-weight: 700;
+
+    margin-bottom: 7px;
+
+    font-size: 25px;
+
+}
+
+
+.welcome-box p {
+
+    position: relative;
+
+    z-index: 2;
+
+    margin: 0;
+
+    opacity: .9;
+
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| ALERT
+|--------------------------------------------------------------------------
+*/
+
+.dashboard-alert {
+
+    border: none;
+
+    border-radius: 12px;
+
+    box-shadow:
+        0 5px 20px rgba(0, 0, 0, .05);
+
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| STAT CARDS
+|--------------------------------------------------------------------------
+*/
+
+.stat-card {
+
+    position: relative;
+
+    background: var(--white);
+
+    border:
+        1px solid rgba(0, 0, 0, .04);
+
+    border-radius: 18px;
+
+    padding: 22px;
+
+    height: 100%;
+
+    transition:
+        all .3s ease;
+
+    box-shadow:
+        0 5px 20px rgba(0, 0, 0, .05);
+
+    overflow: hidden;
+
+}
+
+
+.stat-card::after {
+
+    content: "";
+
+    position: absolute;
+
+    width: 80px;
+    height: 80px;
+
+    background:
+        var(--primary-light);
+
+    border-radius: 50%;
+
+    right: -30px;
+    bottom: -30px;
+
+    opacity: .5;
+
+}
+
+
+.stat-card:hover {
+
+    transform:
+        translateY(-5px);
+
+    box-shadow:
+        0 12px 30px rgba(0, 0, 0, .10);
+
+    border-color:
+        rgba(237, 128, 233, .25);
+
+}
+
+
+.stat-icon {
+
+    width: 52px;
+    height: 52px;
+
+    border-radius: 15px;
+
+    background:
+        var(--primary-light);
+
+    color:
+        var(--primary-dark);
+
+    display: flex;
+
+    align-items: center;
+    justify-content: center;
+
+    font-size: 23px;
+
+    margin-bottom: 17px;
+
+}
+
+
+.stat-title {
+
+    color: #777;
+
+    font-size: 14px;
+
+    font-weight: 500;
+
+    margin-bottom: 5px;
+
+}
+
+
+.stat-value {
+
+    color: var(--dark);
+
+    font-size: 26px;
+
+    font-weight: 700;
+
+    line-height: 1.2;
+
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| DASHBOARD CARD
+|--------------------------------------------------------------------------
+*/
+
+.dashboard-card {
+
+    background: var(--white);
+
+    border-radius: 18px;
+
+    padding: 22px;
+
+    border:
+        1px solid rgba(0, 0, 0, .04);
+
+    box-shadow:
+        0 5px 20px rgba(0, 0, 0, .05);
+
+    height: 100%;
+
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| SECTION TITLE
+|--------------------------------------------------------------------------
+*/
+
+.section-title {
+
+    display: flex;
+
+    justify-content:
+        space-between;
+
+    align-items: center;
+
+    margin-bottom: 18px;
+
+    padding-bottom: 15px;
+
+    border-bottom:
+        1px solid #eee;
+
+}
+
+
+.section-title h5 {
+
+    margin: 0;
+
+    color:
+        var(--dark);
+
+    font-size: 17px;
+
+    font-weight: 700;
+
+}
+
+
+.section-title a {
+
+    text-decoration: none;
+
+    color:
+        var(--primary-dark);
+
+    font-size: 13px;
+
+    font-weight: 600;
+
+}
+
+
+.section-title a:hover {
+
+    color:
+        var(--primary);
+
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| TABLE
+|--------------------------------------------------------------------------
+*/
+
+.dashboard-card .table {
+
+    margin-bottom: 0;
+
+    vertical-align: middle;
+
+}
+
+
+.dashboard-card .table thead th {
+
+    background:
+        #fafafa;
+
+    color:
+        #777;
+
+    font-size: 12px;
+
+    font-weight: 600;
+
+    text-transform:
+        uppercase;
+
+    letter-spacing:
+        .3px;
+
+    border-bottom:
+        1px solid #eee;
+
+    padding:
+        13px 12px;
+
+    white-space:
+        nowrap;
+
+}
+
+
+.dashboard-card .table tbody td {
+
+    padding:
+        15px 12px;
+
+    font-size: 13px;
+
+    color:
+        #555;
+
+    border-bottom:
+        1px solid #f1f1f1;
+
+}
+
+
+.dashboard-card .table tbody tr {
+
+    transition:
+        .2s;
+
+}
+
+
+.dashboard-card .table tbody tr:hover {
+
+    background:
+        #fff8ff;
+
+}
+
+
+.dashboard-card .table tbody tr:last-child td {
+
+    border-bottom:
+        none;
+
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| ORDER NUMBER
+|--------------------------------------------------------------------------
+*/
+
+.order-number {
+
+    color:
+        var(--primary-dark);
+
+    background:
+        var(--primary-light);
+
+    padding:
+        5px 9px;
+
+    border-radius:
+        7px;
+
+    font-size:
+        12px;
+
+    font-weight:
+        600;
+
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| BADGES
+|--------------------------------------------------------------------------
+*/
+
+.badge {
+
+    border-radius:
+        7px;
+
+    padding:
+        6px 9px;
+
+    font-size:
+        11px;
+
+    font-weight:
+        600;
+
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| STOCK
+|--------------------------------------------------------------------------
+*/
+
+.stock-item {
+
+    padding:
+        14px 0;
+
+    border-bottom:
+        1px solid #eee;
+
+}
+
+
+.stock-item:last-child {
+
+    border-bottom:
+        none;
+
+}
+
+
+.stock-name {
+
+    font-size:
+        13px;
+
+    font-weight:
+        600;
+
+    color:
+        var(--dark);
+
+}
+
+
+.stock-category {
+
+    font-size:
+        11px;
+
+    color:
+        #999;
+
+    margin-top:
+        3px;
+
+}
+
+
+.stock-warning,
+.stock-danger {
+
+    padding:
+        5px 9px;
+
+    border-radius:
+        7px;
+
+    font-size:
+        11px;
+
+    font-weight:
+        700;
+
+    white-space:
+        nowrap;
+
+}
+
+
+.stock-warning {
+
+    color:
+        #856404;
+
+    background:
+        #fff3cd;
+
+}
+
+
+.stock-danger {
+
+    color:
+        #842029;
+
+    background:
+        #f8d7da;
+
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| EMPTY STATE
+|--------------------------------------------------------------------------
+*/
+
+.empty-state {
+
+    text-align:
+        center;
+
+    padding:
+        35px 15px;
+
+    color:
+        #999;
+
+}
+
+
+.empty-state i {
+
+    font-size:
+        42px;
+
+    color:
+        var(--success);
+
+    display:
+        block;
+
+    margin-bottom:
+        10px;
+
+}
+
+
+.empty-state p {
+
+    margin:
+        0;
+
+    font-size:
+        13px;
+
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| RESPONSIVE
+|--------------------------------------------------------------------------
+*/
+
+@media (max-width: 768px) {
+
+    .welcome-box {
+
+        padding:
+            22px;
 
     }
 
+    .welcome-box h2 {
 
-    * {
-
-        box-sizing: border-box;
-
-    }
-
-
-    body {
-
-        margin: 0;
-
-        font-family: "Poppins", sans-serif;
-
-        background: var(--light);
-
-        color: var(--text);
+        font-size:
+            21px;
 
     }
-
-
-    /* Sidebar */
-
-    .sidebar {
-
-        position: fixed;
-
-        left: 0;
-
-        top: 0;
-
-        width: 260px;
-
-        height: 100vh;
-
-        background: var(--dark);
-
-        color: white;
-
-        padding: 25px 15px;
-
-        overflow-y: auto;
-
-    }
-
-
-    .brand {
-
-        display: flex;
-
-        align-items: center;
-
-        gap: 10px;
-
-        padding: 0 15px 30px;
-
-        font-size: 22px;
-
-        font-weight: 700;
-
-        color: var(--primary);
-
-    }
-
-
-    .brand i {
-
-        font-size: 28px;
-
-    }
-
-
-    .menu-title {
-
-        color: #999;
-
-        font-size: 11px;
-
-        text-transform: uppercase;
-
-        margin: 20px 15px 8px;
-
-        font-weight: 600;
-
-    }
-
-
-    .sidebar a {
-
-        display: flex;
-
-        align-items: center;
-
-        gap: 12px;
-
-        text-decoration: none;
-
-        color: #d5d5d5;
-
-        padding: 12px 15px;
-
-        border-radius: 10px;
-
-        margin-bottom: 5px;
-
-        transition: 0.3s;
-
-    }
-
-
-    .sidebar a:hover,
-    .sidebar a.active {
-
-        background: var(--primary);
-
-        color: white;
-
-    }
-
-
-    .sidebar a i {
-
-        font-size: 18px;
-
-    }
-
-
-    /* Main */
-
-    .main {
-
-        margin-left: 260px;
-
-        min-height: 100vh;
-
-    }
-
-
-    /* Topbar */
-
-    .topbar {
-
-        height: 75px;
-
-        background: white;
-
-        display: flex;
-
-        align-items: center;
-
-        justify-content: space-between;
-
-        padding: 0 30px;
-
-        border-bottom: 1px solid #eee;
-
-    }
-
-
-    .topbar h1 {
-
-        font-size: 22px;
-
-        font-weight: 600;
-
-        margin: 0;
-
-    }
-
-
-    .admin-info {
-
-        display: flex;
-
-        align-items: center;
-
-        gap: 12px;
-
-    }
-
-
-    .admin-avatar {
-
-        width: 42px;
-
-        height: 42px;
-
-        border-radius: 50%;
-
-        background: var(--primary);
-
-        color: white;
-
-        display: flex;
-
-        align-items: center;
-
-        justify-content: center;
-
-        font-weight: 600;
-
-    }
-
-
-    .admin-name {
-
-        font-weight: 600;
-
-        font-size: 14px;
-
-    }
-
-
-    .admin-role {
-
-        font-size: 11px;
-
-        color: #888;
-
-    }
-
-
-    /* Content */
-
-    .content {
-
-        padding: 30px;
-
-    }
-
-
-    .welcome {
-
-        margin-bottom: 25px;
-
-    }
-
-
-    .welcome h2 {
-
-        font-size: 25px;
-
-        font-weight: 600;
-
-        margin-bottom: 5px;
-
-    }
-
-
-    .welcome p {
-
-        color: #777;
-
-        margin: 0;
-
-    }
-
-
-    /* Cards statistiques */
-
-    .stat-card {
-
-        background: white;
-
-        border-radius: 16px;
-
-        padding: 22px;
-
-        border: none;
-
-        height: 100%;
-
-        transition: 0.3s;
-
-    }
-
-
-    .stat-card:hover {
-
-        transform: translateY(-4px);
-
-        box-shadow:
-            0 10px 30px rgba(237, 128, 233, 0.15);
-
-    }
-
-
-    .stat-icon {
-
-        width: 50px;
-
-        height: 50px;
-
-        border-radius: 13px;
-
-        background: rgba(237, 128, 233, 0.12);
-
-        color: var(--primary);
-
-        display: flex;
-
-        align-items: center;
-
-        justify-content: center;
-
-        font-size: 22px;
-
-        margin-bottom: 15px;
-
-    }
-
-
-    .stat-title {
-
-        color: #888;
-
-        font-size: 13px;
-
-        margin-bottom: 5px;
-
-    }
-
 
     .stat-value {
 
-        font-size: 25px;
-
-        font-weight: 700;
-
-        color: var(--dark);
+        font-size:
+            23px;
 
     }
-
-
-    /* Sections */
 
     .dashboard-card {
 
-        background: white;
-
-        border-radius: 16px;
-
-        padding: 22px;
-
-        border: none;
-
-        height: 100%;
+        padding:
+            16px;
 
     }
-
-
-    .section-title {
-
-        display: flex;
-
-        align-items: center;
-
-        justify-content: space-between;
-
-        margin-bottom: 20px;
-
-    }
-
 
     .section-title h5 {
 
-        margin: 0;
-
-        font-weight: 600;
+        font-size:
+            15px;
 
     }
-
 
     .section-title a {
 
-        color: var(--primary);
-
-        text-decoration: none;
-
-        font-size: 13px;
+        font-size:
+            12px;
 
     }
 
+}
+</style>
 
-    .section-title a:hover {
 
-        color: var(--primary-dark);
+<!-- =========================================================
+     MESSAGE ERREUR
+========================================================= -->
 
-    }
+<?php if (!empty($error)): ?>
 
+<div class="alert alert-danger dashboard-alert mb-4">
 
-    /* Table */
+    <i class="bi bi-exclamation-triangle me-2"></i>
 
-    .table {
+    <?= htmlspecialchars($error) ?>
 
-        margin-bottom: 0;
+</div>
 
-        vertical-align: middle;
+<?php endif; ?>
 
-    }
 
+<!-- =========================================================
+     BIENVENUE
+========================================================= -->
 
-    .table th {
+<div class="welcome-box">
 
-        font-size: 12px;
+    <h2>
 
-        color: #888;
+        Bonjour
+        <?= htmlspecialchars(
+            $admin['prenom'] ?? 'Administrateur'
+        ) ?>
 
-        font-weight: 500;
+        👋
 
-        border-bottom: 1px solid #eee;
+    </h2>
 
-    }
+    <p>
 
+        Voici un aperçu de votre boutique aujourd'hui.
 
-    .table td {
+    </p>
 
-        font-size: 13px;
+</div>
 
-        border-bottom: 1px solid #f2f2f2;
 
-    }
+<!-- =========================================================
+     STATISTIQUES PRINCIPALES
+========================================================= -->
 
+<div class="row g-4 mb-4">
 
-    .order-number {
 
-        color: var(--primary-dark);
+    <!-- PRODUITS -->
 
-        font-weight: 600;
+    <div class="col-xl-3 col-md-6">
 
-    }
+        <div class="stat-card">
 
+            <div class="stat-icon">
 
-    /* Badge */
+                <i class="bi bi-box-seam"></i>
 
-    .badge {
+            </div>
 
-        padding: 7px 10px;
+            <div class="stat-title">
 
-        border-radius: 7px;
+                Produits disponibles
 
-        font-size: 11px;
+            </div>
 
-    }
+            <div class="stat-value">
 
-
-    /* Stock */
-
-    .stock-danger {
-
-        color: #dc3545;
-
-        font-weight: 600;
-
-    }
-
-
-    .stock-warning {
-
-        color: #d99a00;
-
-        font-weight: 600;
-
-    }
-
-
-    /* Responsive */
-
-    @media (max-width: 992px) {
-
-        .sidebar {
-
-            width: 220px;
-
-        }
-
-        .main {
-
-            margin-left: 220px;
-
-        }
-
-    }
-
-
-    @media (max-width: 768px) {
-
-        .sidebar {
-
-            position: relative;
-
-            width: 100%;
-
-            height: auto;
-
-        }
-
-        .main {
-
-            margin-left: 0;
-
-        }
-
-        .topbar {
-
-            padding: 0 15px;
-
-        }
-
-        .content {
-
-            padding: 20px 15px;
-
-        }
-
-    }
-    </style>
-
-</head>
-
-
-<body>
-
-
-    <!-- ========================================================= -->
-    <!-- SIDEBAR -->
-    <!-- ========================================================= -->
-
-    <aside class="sidebar">
-
-
-        <div class="brand">
-
-            <i class="bi bi-shop"></i>
-
-            E-Commerce
-
-        </div>
-
-
-        <div class="menu-title">
-            Général
-        </div>
-
-
-        <a href="dashboard.php" class="active">
-
-            <i class="bi bi-speedometer2"></i>
-
-            Tableau de bord
-
-        </a>
-
-
-        <div class="menu-title">
-            Catalogue
-        </div>
-
-
-        <a href="products/index.php">
-
-            <i class="bi bi-box-seam"></i>
-
-            Produits
-
-        </a>
-
-
-        <a href="categories/index.php">
-
-            <i class="bi bi-grid"></i>
-
-            Catégories
-
-        </a>
-
-
-        <div class="menu-title">
-            Ventes
-        </div>
-
-
-        <a href="orders/index.php">
-
-            <i class="bi bi-cart-check"></i>
-
-            Commandes
-
-        </a>
-
-
-        <div class="menu-title">
-            Administration
-        </div>
-
-
-        <a href="admins/index.php">
-
-            <i class="bi bi-people"></i>
-
-            Administrateurs
-
-        </a>
-
-
-        <a href="../index.php" target="_blank">
-
-            <i class="bi bi-shop-window"></i>
-
-            Voir la boutique
-
-        </a>
-
-
-        <a href="logout.php">
-
-            <i class="bi bi-box-arrow-right"></i>
-
-            Déconnexion
-
-        </a>
-
-    </aside>
-
-
-
-    <!-- ========================================================= -->
-    <!-- MAIN -->
-    <!-- ========================================================= -->
-
-    <main class="main">
-
-
-        <!-- TOPBAR -->
-
-        <header class="topbar">
-
-
-            <h1>
-                Tableau de bord
-            </h1>
-
-
-            <div class="admin-info">
-
-
-                <div>
-
-                    <div class="admin-name">
-
-                        <?= $adminNom ?>
-
-                    </div>
-
-                    <div class="admin-role">
-
-                        <?= $adminRole ?>
-
-                    </div>
-
-                </div>
-
-
-                <div class="admin-avatar">
-
-                    <?= strtoupper(
-                    substr(
-                        $admin['prenom'] ?? 'A',
-                        0,
-                        1
-                    )
+                <?= number_format(
+                    $totalProduits,
+                    0,
+                    ',',
+                    ' '
                 ) ?>
 
-                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- CATEGORIES -->
+
+    <div class="col-xl-3 col-md-6">
+
+        <div class="stat-card">
+
+            <div class="stat-icon">
+
+                <i class="bi bi-grid"></i>
 
             </div>
 
-        </header>
+            <div class="stat-title">
+
+                Catégories
+
+            </div>
+
+            <div class="stat-value">
+
+                <?= number_format(
+                    $totalCategories,
+                    0,
+                    ',',
+                    ' '
+                ) ?>
+
+            </div>
+
+        </div>
+
+    </div>
 
 
+    <!-- CLIENTS -->
 
-        <!-- CONTENT -->
+    <div class="col-xl-3 col-md-6">
 
-        <div class="content">
+        <div class="stat-card">
+
+            <div class="stat-icon">
+
+                <i class="bi bi-people"></i>
+
+            </div>
+
+            <div class="stat-title">
+
+                Clients
+
+            </div>
+
+            <div class="stat-value">
+
+                <?= number_format(
+                    $totalClients,
+                    0,
+                    ',',
+                    ' '
+                ) ?>
+
+            </div>
+
+        </div>
+
+    </div>
 
 
-            <!-- WELCOME -->
+    <!-- COMMANDES -->
 
-            <div class="welcome">
+    <div class="col-xl-3 col-md-6">
 
-                <h2>
-                    Bonjour <?= htmlspecialchars($admin['prenom'] ?? 'Administrateur') ?> 👋
-                </h2>
+        <div class="stat-card">
 
-                <p>
-                    Voici un aperçu de votre boutique aujourd'hui.
-                </p>
+            <div class="stat-icon">
+
+                <i class="bi bi-cart-check"></i>
+
+            </div>
+
+            <div class="stat-title">
+
+                Commandes
+
+            </div>
+
+            <div class="stat-value">
+
+                <?= number_format(
+                    $totalCommandes,
+                    0,
+                    ',',
+                    ' '
+                ) ?>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     STATISTIQUES SECONDAIRES
+========================================================= -->
+
+<div class="row g-4 mb-4">
+
+
+    <!-- CHIFFRE AFFAIRES -->
+
+    <div class="col-xl-4 col-md-6">
+
+        <div class="stat-card">
+
+            <div class="stat-icon">
+
+                <i class="bi bi-currency-exchange"></i>
+
+            </div>
+
+            <div class="stat-title">
+
+                Chiffre d'affaires
+
+            </div>
+
+            <div class="stat-value">
+
+                <?= number_format(
+                    $chiffreAffaires,
+                    0,
+                    ',',
+                    ' '
+                ) ?>
+
+                <small style="
+                        font-size:14px;
+                        font-weight:600;
+                    ">
+
+                    FCFA
+
+                </small>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- COMMANDES ATTENTE -->
+
+    <div class="col-xl-4 col-md-6">
+
+        <div class="stat-card">
+
+            <div class="stat-icon">
+
+                <i class="bi bi-hourglass-split"></i>
+
+            </div>
+
+            <div class="stat-title">
+
+                Commandes en attente
+
+            </div>
+
+            <div class="stat-value">
+
+                <?= number_format(
+                    $commandesAttente,
+                    0,
+                    ',',
+                    ' '
+                ) ?>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- COMMANDES LIVREES -->
+
+    <div class="col-xl-4 col-md-6">
+
+        <div class="stat-card">
+
+            <div class="stat-icon">
+
+                <i class="bi bi-check-circle"></i>
+
+            </div>
+
+            <div class="stat-title">
+
+                Commandes livrées
+
+            </div>
+
+            <div class="stat-value">
+
+                <?= number_format(
+                    $commandesLivrees,
+                    0,
+                    ',',
+                    ' '
+                ) ?>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     COMMANDES + STOCK
+========================================================= -->
+
+<div class="row g-4">
+
+
+    <!-- =====================================================
+         DERNIERES COMMANDES
+    ====================================================== -->
+
+    <div class="col-xl-8">
+
+        <div class="dashboard-card">
+
+            <div class="section-title">
+
+                <h5>
+
+                    <i class="bi bi-receipt me-2" style="color:#ED80E9;"></i>
+
+                    Dernières commandes
+
+                </h5>
+
+
+                <a href="orders/index.php">
+
+                    Voir toutes
+
+                    <i class="bi bi-arrow-right ms-1"></i>
+
+                </a>
 
             </div>
 
 
+            <div class="table-responsive">
 
-            <!-- ================================================= -->
-            <!-- STATISTIQUES -->
-            <!-- ================================================= -->
+                <table class="table">
 
-            <div class="row g-4 mb-4">
+                    <thead>
 
+                        <tr>
 
-                <!-- Produits -->
+                            <th>
+                                Commande
+                            </th>
 
-                <div class="col-xl-3 col-md-6">
+                            <th>
+                                Client
+                            </th>
 
-                    <div class="stat-card">
+                            <th>
+                                Montant
+                            </th>
 
-                        <div class="stat-icon">
+                            <th>
+                                Statut
+                            </th>
 
-                            <i class="bi bi-box-seam"></i>
+                            <th>
+                                Date
+                            </th>
 
-                        </div>
+                        </tr>
 
-                        <div class="stat-title">
-                            Produits
-                        </div>
+                    </thead>
 
-                        <div class="stat-value">
-                            <?= number_format($totalProduits, 0, ',', ' ') ?>
-                        </div>
 
-                    </div>
+                    <tbody>
 
-                </div>
+                        <?php if (
+                            empty($dernieresCommandes)
+                        ): ?>
 
+                        <tr>
 
+                            <td colspan="5">
 
-                <!-- Catégories -->
+                                <div class="empty-state">
 
-                <div class="col-xl-3 col-md-6">
+                                    <i class="bi bi-inbox"></i>
 
-                    <div class="stat-card">
+                                    <p>
 
-                        <div class="stat-icon">
+                                        Aucune commande disponible.
 
-                            <i class="bi bi-grid"></i>
+                                    </p>
 
-                        </div>
+                                </div>
 
-                        <div class="stat-title">
-                            Catégories
-                        </div>
+                            </td>
 
-                        <div class="stat-value">
-                            <?= number_format($totalCategories, 0, ',', ' ') ?>
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- Clients -->
-
-                <div class="col-xl-3 col-md-6">
-
-                    <div class="stat-card">
-
-                        <div class="stat-icon">
-
-                            <i class="bi bi-person"></i>
-
-                        </div>
-
-                        <div class="stat-title">
-                            Clients
-                        </div>
-
-                        <div class="stat-value">
-                            <?= number_format($totalClients, 0, ',', ' ') ?>
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- Commandes -->
-
-                <div class="col-xl-3 col-md-6">
-
-                    <div class="stat-card">
-
-                        <div class="stat-icon">
-
-                            <i class="bi bi-cart-check"></i>
-
-                        </div>
-
-                        <div class="stat-title">
-                            Commandes
-                        </div>
-
-                        <div class="stat-value">
-                            <?= number_format($totalCommandes, 0, ',', ' ') ?>
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- ================================================= -->
-            <!-- CHIFFRE AFFAIRES / COMMANDES -->
-            <!-- ================================================= -->
-
-            <div class="row g-4 mb-4">
-
-
-                <!-- CA -->
-
-                <div class="col-xl-4 col-md-6">
-
-                    <div class="stat-card">
-
-                        <div class="stat-icon">
-
-                            <i class="bi bi-currency-exchange"></i>
-
-                        </div>
-
-                        <div class="stat-title">
-                            Chiffre d'affaires
-                        </div>
-
-                        <div class="stat-value">
-
-                            <?= number_format(
-                            $chiffreAffaires,
-                            0,
-                            ',',
-                            ' '
-                        ) ?>
-
-                            FCFA
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- Commandes attente -->
-
-                <div class="col-xl-4 col-md-6">
-
-                    <div class="stat-card">
-
-                        <div class="stat-icon">
-
-                            <i class="bi bi-hourglass-split"></i>
-
-                        </div>
-
-                        <div class="stat-title">
-                            Commandes en attente
-                        </div>
-
-                        <div class="stat-value">
-                            <?= $commandesAttente ?>
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- Livrées -->
-
-                <div class="col-xl-4 col-md-6">
-
-                    <div class="stat-card">
-
-                        <div class="stat-icon">
-
-                            <i class="bi bi-check-circle"></i>
-
-                        </div>
-
-                        <div class="stat-title">
-                            Commandes livrées
-                        </div>
-
-                        <div class="stat-value">
-                            <?= $commandesLivrees ?>
-                        </div>
-
-                    </div>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- ================================================= -->
-            <!-- COMMANDES + STOCK -->
-            <!-- ================================================= -->
-
-            <div class="row g-4">
-
-
-                <!-- DERNIÈRES COMMANDES -->
-
-                <div class="col-xl-8">
-
-                    <div class="dashboard-card">
-
-
-                        <div class="section-title">
-
-                            <h5>
-                                Dernières commandes
-                            </h5>
-
-                            <a href="orders/index.php">
-                                Voir toutes
-                            </a>
-
-                        </div>
-
-
-                        <div class="table-responsive">
-
-                            <table class="table">
-
-                                <thead>
-
-                                    <tr>
-
-                                        <th>
-                                            Commande
-                                        </th>
-
-                                        <th>
-                                            Client
-                                        </th>
-
-                                        <th>
-                                            Montant
-                                        </th>
-
-                                        <th>
-                                            Statut
-                                        </th>
-
-                                        <th>
-                                            Date
-                                        </th>
-
-                                    </tr>
-
-                                </thead>
-
-
-                                <tbody>
-
-
-                                    <?php if (empty($dernieresCommandes)): ?>
-
-                                    <tr>
-
-                                        <td colspan="5" class="text-center text-muted py-4">
-
-                                            Aucune commande.
-
-                                        </td>
-
-                                    </tr>
-
-                                    <?php else: ?>
-
-
-                                    <?php foreach (
-                                    $dernieresCommandes
-                                    as $commande
-                                ): ?>
-
-
-                                    <?php
-
-                                    $status =
-                                        statutCommande(
-                                            $commande['statut']
-                                        );
-
-                                    ?>
-
-
-                                    <tr>
-
-
-                                        <td>
-
-                                            <span class="order-number">
-
-                                                #
-                                                <?= htmlspecialchars(
-                                                    $commande['numero_commande']
-                                                ) ?>
-
-                                            </span>
-
-                                        </td>
-
-
-                                        <td>
-
-                                            <?= htmlspecialchars(
-                                                $commande['prenom']
-                                                . ' '
-                                                . $commande['nom']
-                                            ) ?>
-
-                                        </td>
-
-
-                                        <td>
-
-                                            <strong>
-
-                                                <?= number_format(
-                                                    (float) $commande['montant_total'],
-                                                    0,
-                                                    ',',
-                                                    ' '
-                                                ) ?>
-
-                                                FCFA
-
-                                            </strong>
-
-                                        </td>
-
-
-                                        <td>
-
-                                            <span class="badge text-bg-<?= $status['class'] ?>">
-
-                                                <?= $status['label'] ?>
-
-                                            </span>
-
-                                        </td>
-
-
-                                        <td>
-
-                                            <?= date(
-                                                'd/m/Y H:i',
-                                                strtotime(
-                                                    $commande['date_commande']
-                                                )
-                                            ) ?>
-
-                                        </td>
-
-
-                                    </tr>
-
-
-                                    <?php endforeach; ?>
-
-
-                                    <?php endif; ?>
-
-
-                                </tbody>
-
-                            </table>
-
-                        </div>
-
-                    </div>
-
-                </div>
-
-
-
-                <!-- STOCK FAIBLE -->
-
-                <div class="col-xl-4">
-
-                    <div class="dashboard-card">
-
-
-                        <div class="section-title">
-
-                            <h5>
-                                Stock faible
-                            </h5>
-
-                            <a href="products/index.php">
-                                Voir les produits
-                            </a>
-
-                        </div>
-
-
-                        <?php if (empty($produitsStockFaible)): ?>
-
-
-                        <div class="text-center py-4">
-
-                            <i class="bi bi-check-circle" style="
-                                    font-size: 35px;
-                                    color: #198754;
-                                "></i>
-
-                            <p class="mt-2 mb-0 text-muted">
-
-                                Aucun produit en stock faible.
-
-                            </p>
-
-                        </div>
-
+                        </tr>
 
                         <?php else: ?>
 
 
                         <?php foreach (
-                            $produitsStockFaible
-                            as $produit
+                            $dernieresCommandes
+                            as $commande
                         ): ?>
 
 
-                        <div class="d-flex justify-content-between align-items-center border-bottom py-3">
+                        <?php
+
+                        $status =
+                            statutCommande(
+                                $commande['statut']
+                            );
+
+                        ?>
 
 
-                            <div>
+                        <tr>
 
-                                <div class="fw-semibold" style="font-size: 13px;">
+
+                            <td>
+
+                                <span class="order-number">
+
+                                    #
 
                                     <?= htmlspecialchars(
-                                            $produit['nom']
-                                        ) ?>
+                                        $commande[
+                                            'numero_commande'
+                                        ]
+                                    ) ?>
+
+                                </span>
+
+                            </td>
+
+
+                            <td>
+
+                                <div class="fw-semibold">
+
+                                    <?= htmlspecialchars(
+                                        $commande[
+                                            'prenom'
+                                        ]
+                                        . ' '
+                                        .
+                                        $commande[
+                                            'nom'
+                                        ]
+                                    ) ?>
 
                                 </div>
 
+                            </td>
+
+
+                            <td>
+
+                                <strong>
+
+                                    <?= number_format(
+                                        (float)
+                                        $commande[
+                                            'montant_total'
+                                        ],
+                                        0,
+                                        ',',
+                                        ' '
+                                    ) ?>
+
+                                    FCFA
+
+                                </strong>
+
+                            </td>
+
+
+                            <td>
+
+                                <span class="
+                                        badge
+                                        text-bg-<?=
+                                        $status['class']
+                                    ?>">
+
+                                    <?= htmlspecialchars(
+                                        $status['label']
+                                    ) ?>
+
+                                </span>
+
+                            </td>
+
+
+                            <td>
 
                                 <small class="text-muted">
 
-                                    <?= htmlspecialchars(
-                                            $produit['categorie']
-                                        ) ?>
+                                    <?= date(
+                                        'd/m/Y H:i',
+                                        strtotime(
+                                            $commande[
+                                                'date_commande'
+                                            ]
+                                        )
+                                    ) ?>
 
                                 </small>
 
-                            </div>
+                            </td>
 
 
-                            <div class="<?=
-                                        $produit['stock'] <= 2
-                                            ? 'stock-danger'
-                                            : 'stock-warning'
-                                    ?>">
-
-                                <?= (int) $produit['stock'] ?>
-
-                                unité(s)
-
-                            </div>
-
-
-                        </div>
+                        </tr>
 
 
                         <?php endforeach; ?>
 
-
                         <?php endif; ?>
 
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         STOCK FAIBLE
+    ====================================================== -->
+
+    <div class="col-xl-4">
+
+        <div class="dashboard-card">
+
+            <div class="section-title">
+
+                <h5>
+
+                    <i class="
+                            bi
+                            bi-exclamation-triangle
+                            me-2
+                            text-warning
+                        "></i>
+
+                    Stock faible
+
+                </h5>
+
+
+                <a href="products/index.php">
+
+                    Voir les produits
+
+                    <i class="bi bi-arrow-right ms-1"></i>
+
+                </a>
+
+            </div>
+
+
+            <?php if (
+                empty($produitsStockFaible)
+            ): ?>
+
+
+            <div class="empty-state">
+
+                <i class="bi bi-check-circle"></i>
+
+                <p>
+
+                    Aucun produit en stock faible.
+
+                </p>
+
+            </div>
+
+
+            <?php else: ?>
+
+
+            <?php foreach (
+                $produitsStockFaible
+                as $produit
+            ): ?>
+
+
+            <div class="stock-item">
+
+                <div class="
+                        d-flex
+                        justify-content-between
+                        align-items-center
+                        gap-3
+                    ">
+
+                    <div class="flex-grow-1">
+
+                        <div class="stock-name">
+
+                            <?= htmlspecialchars(
+                                $produit['nom']
+                            ) ?>
+
+                        </div>
+
+
+                        <div class="stock-category">
+
+                            <i class="
+                                    bi
+                                    bi-tag
+                                    me-1
+                                "></i>
+
+                            <?= htmlspecialchars(
+                                $produit[
+                                    'categorie'
+                                ]
+                            ) ?>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="<?=
+                            $produit['stock'] <= 2
+                            ? 'stock-danger'
+                            : 'stock-warning'
+                        ?>">
+
+                        <i class="
+                                bi
+                                bi-box
+                                me-1
+                            "></i>
+
+                        <?= (int)
+                            $produit['stock']
+                        ?>
 
                     </div>
 
                 </div>
 
-
             </div>
 
 
+            <?php endforeach; ?>
+
+
+            <?php endif; ?>
+
         </div>
 
-    </main>
+    </div>
+
+</div>
 
 
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
-
-</body>
-
-</html>
+<?php require_once __DIR__ . '/includes/footer.php'; ?>

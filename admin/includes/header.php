@@ -1,3 +1,19 @@
+<?php
+// Provide safe defaults if a page forgot to include admin/includes/auth.php
+$inSubfolder = str_contains($_SERVER['SCRIPT_NAME'] ?? '', '/products/')
+    || str_contains($_SERVER['SCRIPT_NAME'] ?? '', '/categories/')
+    || str_contains($_SERVER['SCRIPT_NAME'] ?? '', '/orders/')
+    || str_contains($_SERVER['SCRIPT_NAME'] ?? '', '/admins/');
+
+$assetBase = $assetBase ?? ($inSubfolder ? '../../' : '../');
+$adminBase = $adminBase ?? ($inSubfolder ? '../' : '');
+$adminPage = $adminPage ?? '';
+$adminNom = $adminNom ?? '';
+$adminRole = $adminRole ?? '';
+$admin = $admin ?? [];
+
+?>
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -60,3 +76,16 @@
         </div>
     </header>
     <div class="content">
+        <?php
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
+
+        if (!empty($_SESSION['flash'])) {
+            $f = $_SESSION['flash'];
+            unset($_SESSION['flash']);
+            $type = htmlspecialchars($f['type'] ?? 'info');
+            $msg = htmlspecialchars($f['message'] ?? '');
+            echo "<div class=\"container mt-3\"><div class=\"alert alert-$type\">$msg</div></div>";
+        }
+        ?>

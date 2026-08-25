@@ -1,13 +1,23 @@
 <?php
 
+require_once __DIR__ . '/env.php';
+
 class Database
 {
-    private string $host = "localhost";
-    private string $dbName = "ecommerce3";
-    private string $username = "root";
-    private string $password = "";
+    private string $host;
+    private string $dbName;
+    private string $username;
+    private string $password;
 
     private ?PDO $connection = null;
+
+    public function __construct()
+    {
+        $this->host = getenv('DB_HOST') ?: 'localhost';
+        $this->dbName = getenv('DB_NAME') ?: 'ecommerce3';
+        $this->username = getenv('DB_USER') ?: 'root';
+        $this->password = getenv('DB_PASS') ?: '';
+    }
 
     /**
      * Établit la connexion à la base de données
@@ -15,9 +25,7 @@ class Database
     public function getConnection(): PDO
     {
         if ($this->connection === null) {
-
             try {
-
                 $dsn = "mysql:host={$this->host};dbname={$this->dbName};charset=utf8mb4";
 
                 $this->connection = new PDO(
@@ -32,11 +40,12 @@ class Database
                 );
 
             } catch (PDOException $e) {
+                // Log the real error for debugging
+                error_log("Database connection error: " . $e->getMessage());
 
-                die(
-                    "Erreur de connexion à la base de données : "
-                    . $e->getMessage()
-                );
+                // Show a generic message to the user and stop execution
+                echo "<p>Impossible de se connecter à la base de données. Contactez l'administrateur.</p>";
+                exit;
             }
         }
 

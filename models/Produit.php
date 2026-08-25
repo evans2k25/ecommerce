@@ -175,6 +175,71 @@ class Produit
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
+    /**
+     * Récupérer les produits pour l'admin avec pagination et recherche
+     */
+    public function getAdminPaginated(string $search = '', int $limit = 20, int $offset = 0): array
+    {
+        $sql = "
+            SELECT
+                p.id_produit,
+                p.id_categorie,
+                p.nom,
+                p.description,
+                p.prix,
+                p.stock,
+                p.image,
+                p.statut,
+                p.date_creation,
+                p.date_modification,
+                c.nom AS categorie_nom
+            FROM produits p
+            INNER JOIN categories c
+                ON c.id_categorie = p.id_categorie
+        ";
+
+        $params = [];
+
+        if ($search !== '') {
+            $sql .= " WHERE p.nom LIKE :search OR p.description LIKE :search ";
+            $params['search'] = '%' . $search . '%';
+        }
+
+        $sql .= " ORDER BY p.date_creation DESC LIMIT :limit OFFSET :offset";
+
+        $stmt = $this->db->prepare($sql);
+
+        foreach ($params as $k => $v) {
+            $stmt->bindValue(':' . $k, $v, PDO::PARAM_STR);
+        }
+
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+
+        $stmt->execute();
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Compter les produits (optionnellement filtrés)
+     */
+    public function countAdmin(string $search = ''): int
+    {
+        $sql = "SELECT COUNT(*) FROM produits p";
+        $params = [];
+
+        if ($search !== '') {
+            $sql .= " WHERE p.nom LIKE :search OR p.description LIKE :search";
+            $params['search'] = '%' . $search . '%';
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        return (int) $stmt->fetchColumn();
+    }
+
 public function update(int $id, array $data): bool
 {
     $sql = "

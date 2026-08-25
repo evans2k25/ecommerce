@@ -10,13 +10,13 @@ class CartController
     public function add(
         int $productId,
         int $quantity,
-        float $price
+        float $prix
     ): void {
 
         Panier::add(
             $productId,
             $quantity,
-            $price
+            $prix
         );
     }
 

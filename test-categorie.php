@@ -10,6 +10,5 @@ $categorieModel = new Categorie($db);
 
 $categories = $categorieModel->getAll();
 
-echo "<pre>";
-print_r($categories);
-echo "</pre>";
+// Affichage minimal pour debug non invasif
+echo "<pre>Nombre de catégories : " . count($categories) . "</pre>";
