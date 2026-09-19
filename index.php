@@ -30,13 +30,14 @@ require_once __DIR__ . "/includes/header.php";
             <div class="col-lg-7">
 
                 <span class="badge bg-light text-dark mb-3">
-                    Bienvenue dans notre boutique
+                    MUSE MODERNE
                 </span>
 
                 <h1 class="display-4 fw-bold">
+                    MUSE MODERNE
 
-                    Achetez simplement.
                     <br>
+                    Achetez simplement.
                     Recevez rapidement.
 
                 </h1>

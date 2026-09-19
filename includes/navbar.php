@@ -220,6 +220,15 @@
     filter: brightness(0.6);
 }
 
+/* Small logo sizing */
+.navbar-logo {
+    height: 44px;
+    width: auto;
+    display: inline-block;
+    object-fit: contain;
+    border-radius: 6px;
+}
+
 
 /* =========================================================
    RESPONSIVE
@@ -326,9 +335,9 @@
 
         <a class="navbar-brand" href="<?= $baseUrl ?? '' ?>index.php">
 
-            <i class="bi bi-shop"></i>
+            <img src="<?= ($baseUrl ?? '') . 'assets/images/logo.png' ?>" alt="Logo" class="navbar-logo">
 
-            <span>Ecommerce</span>
+            <span class="brand-text">MUSE MODERNE</span>
 
         </a>
 
